@@ -17,11 +17,26 @@ var
         // clicked on:
         modalErrorsClickable:true,
 
+        //if set to true will include title with rendered errors
+        useInfer: true,
+
         // If a field name cannot be otherwise inferred, this will be used:
         defaultFieldName:"This field",
         
         // jQuery selector to filter down to validation-supported elements:
-        elementSupport:":text, :password, textarea, select, :radio, :checkbox, input[type='hidden'], input[type='tel'], input[type='email']",
+        elementSupport:[
+            ":text", 
+            ":password", 
+            "textarea", 
+            "select", 
+            ":radio", 
+            ":checkbox", 
+            "input[type='hidden']", 
+            "input[type='tel']", 
+            "input[type='email']",
+            "input[type='number']",
+            "input[type='file']"
+        ].join(", "),
         
         // Function to stringify argments for use when generating error 
         // messages. Primarily, it just generates pretty date strings:
@@ -126,7 +141,10 @@ $.validity = {
 
         // Radio validator messages:
         radioChecked:"The selected value is not valid.",
-        
+
+        // Checkbox validator message:
+        checkboxChecked:"#{field} must be checked.",
+		
         generic:"Invalid."
     },
     
@@ -204,7 +222,7 @@ $.validity = {
         this.out.start();
         
         // Initialize the report object:
-        this.report = { errors:0, valid:true };
+        this.report = { errors:0, valid:true, reductionObjects:[] };
     },
 
     // Function called when validation is over to examine the results and 
@@ -213,6 +231,10 @@ $.validity = {
 
         // Null coalescence: fix for Issue 5:
         var results = this.report || { errors: 0, valid: true };
+
+        for (var idx = 0; idx < this.report.reductionObjects.length; ++idx) {
+            delete this.report.reductionObjects[idx].reduction;
+        }
 
         this.report = null;
         
@@ -226,6 +248,10 @@ $.validity = {
     clear:function() {
         this.start();
         this.end();
+    },
+
+    registerReduction:function(obj) {
+        this.report.reductionObjects.push(obj);
     }
 };
 
@@ -242,6 +268,8 @@ $.fn.extend({
         return this.each(
         
             function() {
+
+                var self = this;
             
                 // Only operate on forms:
                 if (this.tagName.toLowerCase() == "form") {
@@ -266,7 +294,7 @@ $.fn.extend({
                             "submit",
                             function() {
                                 $.validity.start();
-                                f();
+                                f.apply(self);
                                 return $.validity.end().valid;
                             }
                         );
@@ -287,7 +315,10 @@ $.fn.extend({
         return validate(
             this,
             function(obj) {
-                return !!$(obj).val().length;
+                if ($(obj).val()) {
+                    return $(obj).val() != null && !!$(obj).val().length;
+                }
+                return false;
             },
             msg || $.validity.messages.require
         );
@@ -345,28 +376,28 @@ $.fn.extend({
             min.getTime && max.getTime ?
 
                 // If both arguments are dates then use them that way.
-                function(obj) {
+                orEmpty(function(obj) {
                     var d = new Date(obj.value);
                     return d >= new Date(min) && d <= new Date(max);
-                } :
+                }) :
 
                 min.substring && max.substring && Big ?
 
                     // If both arguments are strings then parse them  using the 
                     // Arbitrary-Precision library.
-                    function(obj) {
+                    orEmpty(function(obj) {
                         var n = new Big(obj.value);
                         return (
                             n.greaterThanOrEqualTo(new Big(min)) && 
                             n.lessThanOrEqualTo(new Big(max))
                         );
-                    } :
+                    }) :
 
                     // Otherwise treat them like floats.
-                    function(obj) {
+                    orEmpty(function(obj) {
                         var f = parseFloat(obj.value);
                         return f >= min && f <= max;
-                    },
+                    }),
 
             msg || format(
                 $.validity.messages.range, {
@@ -382,19 +413,19 @@ $.fn.extend({
             this,
 
             min.getTime ?
-                function(obj) {
+                orEmpty(function(obj) {
                     return new Date(obj.value) > min;
-                } :
+                }) :
 
                 min.substring && Big ?
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                        return new Big(obj.value).greaterThan(new Big(min)); 
-                    } :
+                    }) :
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                         return parseFloat(obj.value) > min;
-                    },
+                    }),
 
             msg || format(
                 $.validity.messages.greaterThan, {
@@ -409,19 +440,19 @@ $.fn.extend({
             this,
 
             min.getTime ?
-                function(obj) {
+                orEmpty(function(obj) {
                     return new Date(obj.value) >= min;
-                } :
+                }) :
 
                 min.substring && Big ?
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                         return new Big(obj.value).greaterThanOrEqualTo(new Big(min));
-                    } :
+                    }) :
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                         return parseFloat(obj.value) >= min;
-                    },
+                    }),
 
             msg || format(
                 $.validity.messages.greaterThanOrEqualTo, {
@@ -436,19 +467,19 @@ $.fn.extend({
             this,
 
             max.getTime ?
-                function(obj) {
+                orEmpty(function(obj) {
                     return new Date(obj.value) < max;
-                } :
+                }) :
 
                 max.substring && Big ?
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                         return new Big(obj.value).lessThan(new Big(max));
-                    } :
+                    }) :
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                         return parseFloat(obj.value) < max;
-                    },
+                    }),
 
             msg || format(
                 $.validity.messages.lessThan, {
@@ -463,19 +494,19 @@ $.fn.extend({
             this,
 
             max.getTime ?
-                function(obj) {
+                orEmpty(function(obj) {
                     return new Date(obj.value) <= max;
-                } :
+                }) :
 
                 max.substring && Big ?
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                         return new Big(obj.value).lessThanOrEqualTo(new Big(max));
-                    } :
+                    }) :
 
-                    function(obj) {
+                    orEmpty(function(obj) {
                         return parseFloat(obj.value) <= max;
-                    },
+                    }),
 
             msg || format(
                 $.validity.messages.lessThanOrEqualTo, {
@@ -488,9 +519,9 @@ $.fn.extend({
     maxLength:function(max, msg) {
         return validate(
             this,
-            function(obj) {
+            orEmpty(function(obj) {
                 return obj.value.length <= max;
-            },
+            }),
             msg || format(
                 $.validity.messages.tooLong, {
                     max:max
@@ -502,9 +533,9 @@ $.fn.extend({
     minLength:function(min, msg) {
         return validate(
             this,
-            function(obj) {
+            orEmpty(function(obj) {
                 return obj.value.length >= min;
-            },
+            }),
             msg || format(
                 $.validity.messages.tooShort, {
                     min:min
@@ -550,9 +581,9 @@ $.fn.extend({
         
         return validate(
             this,
-            function(obj) {
+            orEmpty(function(obj) {
                 return (obj.value.match(charClass) || []).length >= min;
-            },
+            }),
             msg || format(
                 $.validity.messages.minCharClass, {
                     min:min,
@@ -604,6 +635,8 @@ $.fn.extend({
     // Validate that all matched elements bear the same values. Accepts a 
     // function to transform the values for testing.
     equal:function(arg0, arg1) {
+        $.validity.registerReduction(this);
+
         var 
             // If a reduced set is attached, use it. Also, remove unsupported 
             // elements.
@@ -665,6 +698,8 @@ $.fn.extend({
     // Validate that all matched elements bear distinct values. Accepts an 
     // optional function to transform the values for testing.
     distinct:function(arg0, arg1) {
+        $.validity.registerReduction(this);
+
         var 
             // If a reduced set is attached, use it.
             // Also, remove unsupported elements.
@@ -757,6 +792,8 @@ $.fn.extend({
 
     // Validate that the numeric sum of all values is equal to a given value.
     sum:function(sum, msg) {
+        $.validity.registerReduction(this);
+
         // If a reduced set is attached, use it. Also, remove unsupported 
         // elements.
         var $reduction =  (this.reduction || this).filter($.validity.settings.elementSupport);
@@ -780,6 +817,8 @@ $.fn.extend({
     // Validates an inclusive upper-bound on the numeric sum of the values of 
     // all matched elements.
     sumMax:function(max, msg) {
+        $.validity.registerReduction(this);
+
         // If a reduced set is attached, use it. Also, remove unsupported 
         // elements.
         var $reduction =  (this.reduction || this).filter($.validity.settings.elementSupport);
@@ -803,6 +842,8 @@ $.fn.extend({
     // Validates an inclusive lower-bound on the numeric sum of the values of 
     // all matched elements.
     sumMin:function(min, msg) {
+        $.validity.registerReduction(this);
+
         // If a reduced set is attached, use it. Also, remove unsupported 
         // elements.
         var $reduction =  (this.reduction || this).filter($.validity.settings.elementSupport);
@@ -827,6 +868,8 @@ $.fn.extend({
     ///////////////////////////////////////////////////////////////////////////
     
     radioChecked:function(val, msg) {
+        $.validity.registerReduction(this);
+
         // If a reduced set is attached, use it. Also, remove unsupported 
         // elements.
         var $reduction =  (this.reduction || this).filter($.validity.settings.elementSupport);
@@ -840,6 +883,8 @@ $.fn.extend({
     },
     
     radioNotChecked:function(val, msg) {
+        $.validity.registerReduction(this);
+
         // If a reduced set is attached, use it. Also, remove unsupported 
         // elements.
         var $reduction =  (this.reduction || this).filter($.validity.settings.elementSupport);
@@ -856,16 +901,15 @@ $.fn.extend({
     ///////////////////////////////////////////////////////////////////////////
     
     checkboxChecked:function(msg) {
-        // If a reduced set is attached, use it. Also, remove unsupported 
-        // elements.
-        var $reduction =  (this.reduction || this).filter($.validity.settings.elementSupport);
-        
-        if ($reduction.is(":checkbox") && !$reduction.is(":checked")) {
-            raiseAggregateError(
-                $reduction,
-                msg || $.validity.messages.radioChecked
-            );
-        }
+        return validate(
+            this,
+
+            function(obj) {
+                return !$(obj).is(":checkbox") || $(obj).is(":checked");
+            },
+
+            msg || $.validity.messages.checkboxChecked
+        );
     },
     
     // Specialized validators:
@@ -875,6 +919,8 @@ $.fn.extend({
     // Otherwise, it is treated as a boolean, and the determines the validity 
     // of elements in an aggregate fashion.
     assert:function(expression, msg) {
+
+        $.validity.registerReduction(this);
 
         // If a reduced set is attached, use it. Do not reduce to supported 
         // elements.
@@ -921,6 +967,8 @@ $.fn.extend({
 // Raise the specified error on failures. This function is the heart of 
 // validity:
 function validate($obj, regimen, message) {
+
+    $.validity.registerReduction($obj);
 
     var 
         // If a reduced set is attached, use it Also, remove any unsupported 
@@ -1013,6 +1061,10 @@ function format(str, obj) {
 // attribute. If that doesn't work, return the default field name in the 
 // configuration.
 function infer(field) {
+    if (!$.validity.settings.useInfer) {
+        return $.validity.settings.defaultFieldName;
+    }
+
     var 
         $f = $(field),
         id = $f.prop("id"),
@@ -1049,6 +1101,12 @@ function capitalize(sz) {
         sz;
 }
 
+function orEmpty(fn) {
+    return function(obj) {
+        return obj.value.length == 0 || fn(obj);
+    };
+}
+
 __private = { 
     validate:validate,
     addToReport:addToReport,
@@ -1057,7 +1115,8 @@ __private = {
     numericSum:numericSum,
     format:format,
     infer:infer,
-    capitalize:capitalize
+    capitalize:capitalize,
+    orEmpty:orEmpty
 };
 
 })(jQuery);

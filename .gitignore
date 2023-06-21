@@ -1,5 +1,5 @@
 *.swp
-build/
-tests/build/
 compiler/jQuery.validity.*
 *.DS_Store
+tests/build
+validity.js

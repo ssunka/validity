@@ -30,7 +30,7 @@
             pos.left += $obj.width() + 18;
             pos.top += 8;
             
-            $(
+            var tooltip = $(
                 "<div class=\"validity-tooltip\">" + 
                     msg +
                     "<div class=\"validity-tooltip-outer\">" +
@@ -46,6 +46,12 @@
                 .hide()
                 .appendTo("body")
                 .fadeIn();
+
+            if ($.validity.settings.fadeOutTooltipsOnFocus) {
+                $obj.on("focus", function() {
+                    tooltip.fadeOut();
+                });
+            }
         },
 
         raiseAggregate:function($obj, msg) {
@@ -61,9 +67,15 @@
 // Install the label output.
 (function($) {
     function getIdentifier($obj) {
-        return $obj.attr('id').length ?
-            $obj.attr('id') :
-            $obj.attr('name');
+        if ($obj.attr('id') && $obj.attr('id').length) {
+            return $obj.attr('id');
+        }
+        else if ($obj.attr('name') && $obj.attr('name').length) {
+            return $obj.attr('name');
+        } 
+        else {
+            return '';
+        }
     }
 
     $.validity.outputs.label = {
@@ -71,7 +83,7 @@
     
         start:function() {
             // Remove all the existing error labels.
-            $("." + $.validity.outputs.label.cssClass)
+            $("label." + $.validity.outputs.label.cssClass)
                 .remove();
         },
         
@@ -93,7 +105,7 @@
 
             // Otherwize create a new one and stick it after the input:
             else {
-                $("<label/>")
+                var errorLabel = $("<label/>")
                     .attr("for", getIdentifier($obj))
                     .addClass($.validity.outputs.label.cssClass)
                     .text(msg)
@@ -106,9 +118,18 @@
                         if ($obj.length) {
                             $obj[0].select();
                         }
-                    })
+                    });
 
-                    .insertAfter($obj);
+                var $insertAfter = $obj;
+
+                // For checkboxes, append error label after the checkbox's label 
+                // (if it exists)
+                if ($obj.is(":checkbox") && 
+                    $("label[for='" + getIdentifier($obj) + "']").length) {
+                    $insertAfter = $("label[for='" + getIdentifier($obj) + "']");
+                }
+
+                errorLabel.insertAfter($insertAfter);
             }
         },
 
@@ -157,6 +178,7 @@
                     
                 // Create one and position it next to the input.
                 $("<div/>")
+                    .attr('id', 'validity-modal-msg-' + off.left + '-' + off.top)
                     .addClass(errorClass)
                     .css(errorStyle)
                     .text(msg)
@@ -198,6 +220,11 @@
         buffer = [];
 
     $.validity.outputs.summary = {
+        options:{
+            // Configurable container selector to facilitate having multiple containers on one page
+            // Defaults to standard selector defined above
+            container : container
+        },
         start:function() {
             $(errors).removeClass(erroneous);
             buffer = [];
@@ -205,7 +232,8 @@
 
         end:function(results) {
             // Hide the container and empty its summary.
-            $(container)
+            $(this.options.container)
+                .stop()
                 .hide()
                 .find("ul")
                     .html('');
@@ -217,10 +245,10 @@
                 for (var i = 0; i < buffer.length; ++i) {
                     $(wrapper)
                         .text(buffer[i])
-                        .appendTo(container + " ul");
+                        .appendTo(this.options.container + " ul");
                 }
 
-                $(container).show();
+                $(this.options.container).show();
                 
                 // If scrollTo is enabled, scroll the page to the first error.
                 if ($.validity.settings.scrollTo) {
@@ -240,10 +268,10 @@
         
         container:function() {
             document.write(
-                "<div class=\"validity-summary-container\">" + 
+                    "<div class=\"" + this.options.container + "\">" +
                     "The form didn't submit for the following reason(s):" +
                     "<ul></ul>" +
-                "</div>"
+                    "</div>"
             );
         }
     };
